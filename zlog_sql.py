@@ -15,6 +15,16 @@ import sys
 if not hasattr(sys, 'argv'):
     sys.argv  = ['']
 
+TYPE_PRIVMSG = 1
+TYPE_ACTION = 2
+TYPE_NOTICE = 3
+TYPE_MODE = 4
+TYPE_JOIN = 5
+TYPE_PART = 6
+TYPE_QUIT = 7
+TYPE_NICK = 8
+TYPE_KICK = 9
+
 # noinspection PyPep8Naming
 class zlog_sql(znc.Module):
     description = 'Logs all channels to a MySQL/SQLite database.'
@@ -83,7 +93,7 @@ class zlog_sql(znc.Module):
         :rtype: None
         """
         self.debug_hook()
-        self.put_log('Connected to IRC (' + self.GetServer() + ')')
+        self.put_log('Connected to IRC (' + self.GetServer() + ')', 'znc', TYPE_PRIVMSG)
 
     def OnIRCDisconnected(self):
         """
@@ -91,7 +101,7 @@ class zlog_sql(znc.Module):
         :rtype: None
         """
         self.debug_hook()
-        self.put_log('Disconnected from IRC (' + self.GetServer() + ')')
+        self.put_log('Disconnected from IRC (' + self.GetServer() + ')', 'znc', TYPE_PRIVMSG)
 
     def OnBroadcast(self, message):
         """
@@ -100,7 +110,7 @@ class zlog_sql(znc.Module):
         :rtype: EModRet
         """
         self.debug_hook()
-        self.put_log('Broadcast: ' + str(message))
+        self.put_log('Broadcast: ' + str(message), 'znc', TYPE_PRIVMSG)
         return znc.CONTINUE
 
     def OnRawMode(self, opNick, channel, modes, args):
@@ -117,7 +127,7 @@ class zlog_sql(znc.Module):
         """
         self.debug_hook()
         sNick = opNick.GetNick() if opNick is not None else 'Server'
-        self.put_log('*** ' + sNick + ' sets mode: ' + modes + ' ' + args, channel.GetName())
+        self.put_log(sNick + ' sets mode: ' + modes + ' ' + args, channel.GetName(), sNick, TYPE_MODE)
 
     def OnKick(self, opNick, kickedNick, channel, message):
         if self.log_extras is not True:
@@ -131,8 +141,8 @@ class zlog_sql(znc.Module):
         :rtype: None
         """
         self.debug_hook()
-        self.put_log('*** ' + kickedNick + ' was kicked by ' + opNick.GetNick() + ' (' + message + ')',
-                     channel.GetName())
+        self.put_log(kickedNick + ' was kicked by ' + opNick.GetNick() + ' (' + message + ')',
+                     channel.GetName(), kickedNick, TYPE_KICK)
 
     def OnQuit(self, nick, message, channels):
         if self.log_extras is not True:
@@ -147,8 +157,8 @@ class zlog_sql(znc.Module):
         self.debug_hook()
         for channel in channels:
             self.put_log(
-                '*** Quits: ' + nick.GetNick() + ' (' + nick.GetIdent() + '@' + nick.GetHost() + ') (' + message + ')',
-                channel.GetName())
+                nick.GetNick() + ' (' + nick.GetIdent() + '@' + nick.GetHost() + ') (' + message + ')',
+                channel.GetName(), nick.GetNick(), TYPE_QUIT)
 
     def OnJoin(self, nick, channel):
         if self.log_extras is not True:
@@ -160,8 +170,8 @@ class zlog_sql(znc.Module):
         :rtype: None
         """
         self.debug_hook()
-        self.put_log('*** Joins: ' + nick.GetNick() + ' (' + nick.GetIdent() + '@' + nick.GetHost() + ')',
-                     channel.GetName())
+        self.put_log(nick.GetNick() + ' (' + nick.GetIdent() + '@' + nick.GetHost() + ')',
+                     channel.GetName(), nick.GetNick(), TYPE_JOIN)
 
     def OnPart(self, nick, channel, message):
         if self.log_extras is not True:
@@ -175,8 +185,8 @@ class zlog_sql(znc.Module):
         """
         self.debug_hook()
         self.put_log(
-            '*** Parts: ' + nick.GetNick() + ' (' + nick.GetIdent() + '@' + nick.GetHost() + ') (' + message + ')',
-            channel.GetName())
+            nick.GetNick() + ' (' + nick.GetIdent() + '@' + nick.GetHost() + ') (' + message + ')',
+            channel.GetName(), nick.GetNick(), TYPE_PART)
 
     def OnNick(self, oldNick, newNick, channels):
         if self.log_extras is not True:
@@ -190,36 +200,22 @@ class zlog_sql(znc.Module):
         """
         self.debug_hook()
         for channel in channels:
-            self.put_log('*** ' + oldNick.GetNick() + ' is now known as ' + newNick, channel.GetName())
-
-    def OnTopic(self, nick, channel, topic):
-        if self.log_extras is not True:
-            return
-        """
-        Called when we receive a channel topic change from IRC.
-        :type nick: CNick &
-        :type channel: CChan &
-        :type topic: CString &
-        :rtype: EModRet
-        """
-        self.debug_hook()
-        self.put_log('*** ' + nick.GetNick() + ' changes topic to "' + str(topic) + '"', channel.GetName())
-        return znc.CONTINUE
+            self.put_log(oldNick.GetNick() + ' is now known as ' + newNick, channel.GetName(), oldNick.GetNick(), TYPE_NICK)
 
     # NOTICES
     # =======
 
-    def OnUserNotice(self, target, message):
+    def OnUserNotice(self, buffer, message):
         """
         This module hook is called when a user sends a NOTICE message.
-        :type target: CString &
+        :type buffer: CString &
         :type message: CString &
         :rtype: EModRet
         """
         self.debug_hook()
         network = self.GetNetwork()
         if network:
-            self.put_log('-' + network.GetCurNick() + '- ' + str(message), str(target))
+            self.put_log(str(message), str(buffer), network.GetCurNick(), TYPE_NOTICE)
 
         return znc.CONTINUE
 
@@ -231,7 +227,7 @@ class zlog_sql(znc.Module):
         :rtype: EModRet
         """
         self.debug_hook()
-        self.put_log('-' + nick.GetNick() + '- ' + str(message), nick.GetNick())
+        self.put_log(str(message), nick.GetNick(). nick.GetNick(), TYPE_NOTICE)
         return znc.CONTINUE
 
     def OnChanNotice(self, nick, channel, message):
@@ -243,23 +239,23 @@ class zlog_sql(znc.Module):
         :rtype: EModRet
         """
         self.debug_hook()
-        self.put_log('-' + nick.GetNick() + '- ' + str(message), channel.GetName())
+        self.put_log(str(message), channel.GetName(), nick.GetNick(), TYPE_NOTICE)
         return znc.CONTINUE
 
     # ACTIONS
     # =======
 
-    def OnUserAction(self, target, message):
+    def OnUserAction(self, buffer, message):
         """
         Called when a client sends a CTCP ACTION request ("/me").
-        :type target: CString &
+        :type buffer: CString &
         :type message: CString &
         :rtype: EModRet
         """
         self.debug_hook()
         pNetwork = self.GetNetwork()
         if pNetwork:
-            self.put_log('* ' + pNetwork.GetCurNick() + ' ' + str(message), str(target))
+            self.put_log(str(message), str(buffer), pNetwork.GetCurNick(), TYPE_ACTION)
 
         return znc.CONTINUE
 
@@ -271,7 +267,7 @@ class zlog_sql(znc.Module):
         :rtype: EModRet
         """
         self.debug_hook()
-        self.put_log('* ' + nick.GetNick() + ' ' + str(message), nick.GetNick())
+        self.put_log(str(message), nick.GetNick(). nick.GetNick(), TYPE_ACTION)
         return znc.CONTINUE
 
     def OnChanAction(self, nick, channel, message):
@@ -283,23 +279,23 @@ class zlog_sql(znc.Module):
         :rtype: EModRet
         """
         self.debug_hook()
-        self.put_log('* ' + nick.GetNick() + ' ' + str(message), channel.GetName())
+        self.put_log(str(message), channel.GetName(), nick.GetNick(), TYPE_ACTION)
         return znc.CONTINUE
 
     # MESSAGES
     # ========
 
-    def OnUserMsg(self, target, message):
+    def OnUserMsg(self, buffer, message):
         """
         This module hook is called when a user sends a PRIVMSG message.
-        :type target: CString &
+        :type buffer: CString &
         :type message: CString &
         :rtype: EModRet
         """
         self.debug_hook()
         network = self.GetNetwork()
         if network:
-            self.put_log('<' + network.GetCurNick() + '> ' + str(message), str(target))
+            self.put_log(str(message), str(buffer), network.GetCurNick(), TYPE_PRIVMSG)
 
         return znc.CONTINUE
 
@@ -311,7 +307,7 @@ class zlog_sql(znc.Module):
         :rtype: EModRet
         """
         self.debug_hook()
-        self.put_log('<' + nick.GetNick() + '> ' + str(message), nick.GetNick())
+        self.put_log(str(message), nick.GetNick(), nick.GetNick(), TYPE_PRIVMSG)
         return znc.CONTINUE
 
     def OnChanMsg(self, nick, channel, message):
@@ -323,13 +319,14 @@ class zlog_sql(znc.Module):
         :rtype: EModRet
         """
         self.debug_hook()
-        self.put_log('<' + nick.GetNick() + '> ' + str(message), channel.GetName())
+        self.put_log(str(message), channel.GetName(), nick.GetNick(), TYPE_PRIVMSG)
         return znc.CONTINUE
 
     # LOGGING
     # =======
 
-    def put_log(self, line, window="Status"):
+#include <string>
+    def put_log(self, line, buffer="Status", source="", type=TYPE_PRIVMSG):
         """
         Adds the log line to database write queue.
         """
@@ -337,8 +334,10 @@ class zlog_sql(znc.Module):
             'created_at': datetime.utcnow().isoformat(),
             'user': self.GetUser().GetUserName() if self.GetUser() is not None else None,
             'network': self.GetNetwork().GetName() if self.GetUser() is not None else None,
-            'window': window,
-            'message': line.encode('utf8', 'replace').decode('utf8')})
+            'buffer': buffer,
+            'message': line.encode('utf8', 'replace').decode('utf8'),
+            'source': source,
+            'type': type})
 
     # DEBUGGING HOOKS
     # ===============
@@ -428,16 +427,16 @@ class DatabaseThread:
                     target.write('Could not save to database caused by: {0} {1}\n'.format(type(e), str(e)))
                     if 'open' in dir(db.conn):
                         target.write('Database handle state: {}\n'.format(db.conn.open))
-                    target.write('Stack trace: ' + traceback.format_exc())
-                    target.write('Current log: ')
-                    json.dump(item, target)
-                    target.write('\n\n')
-                    target.write('Retry in {} s\n'.format(sleep_for))
+                        target.write('Stack trace: ' + traceback.format_exc())
+                        target.write('Current log: ')
+                        json.dump(item, target)
+                        target.write('\n\n')
+                        target.write('Retry in {} s\n'.format(sleep_for))
 
                 sleep(sleep_for)
 
                 with internal_log.error() as target:
-                    target.write('Retrying now.\n'.format(sleep_for))
+                    target.write('Retrying now.\n')
                     log_queue.put(item)
 
 
@@ -476,8 +475,10 @@ CREATE TABLE IF NOT EXISTS logs (
   "created_at" TIMESTAMP WITH TIME ZONE NOT NULL,
   "user" VARCHAR(128) DEFAULT NULL,
   "network" VARCHAR(128) DEFAULT NULL,
-  "window" VARCHAR(255) NOT NULL,
+  "buffer" VARCHAR(255) NOT NULL,
   "message" TEXT,
+  "source" VARCHAR(128) DEFAULT NULL,
+  "type" INT(1) DEFAULT NULL,
   PRIMARY KEY (id)
 );
 ''')
@@ -504,8 +505,10 @@ CREATE TABLE IF NOT EXISTS `logs` (
   `created_at` DATETIME NOT NULL,
   `user` VARCHAR(128) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `network` VARCHAR(128) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `window` VARCHAR(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `buffer` VARCHAR(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `message` TEXT COLLATE utf8mb4_unicode_ci,
+  `source` VARCHAR(128) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `type` INT(1) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `created_at` (`created_at`),
   KEY `user` (`user`),
@@ -536,8 +539,10 @@ CREATE TABLE IF NOT EXISTS [logs](
     [created_at] DATETIME NOT NULL, 
     [user] VARCHAR, 
     [network] VARCHAR, 
-    [window] VARCHAR, 
-    [message] TEXT);
+    [buffer] VARCHAR, 
+    [message] TEXT,
+    [source] VARCHAR,
+    [type] INTEGER);
 ''')
         self.conn.commit()
 
