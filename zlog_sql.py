@@ -10,7 +10,10 @@ from datetime import datetime
 from time import sleep
 
 import znc
+import sys
 
+if not hasattr(sys, 'argv'):
+    sys.argv  = ['']
 
 # noinspection PyPep8Naming
 class zlog_sql(znc.Module):
@@ -22,8 +25,10 @@ class zlog_sql(znc.Module):
     has_args = True
     args_help_text = ('Connection string in format: mysql://user:pass@host/database_name'
                       ' or postgres://user:pass@host/database_name'
-                      ' or sqlite://path/to/db.sqlite')
+                      ' or sqlite://path/to/db.sqlite'
+                      'use --extras for join/parts/quits')
 
+    log_extras = False
     log_queue = multiprocessing.SimpleQueue()
     internal_log = None
     hook_debugging = False
@@ -99,6 +104,8 @@ class zlog_sql(znc.Module):
         return znc.CONTINUE
 
     def OnRawMode(self, opNick, channel, modes, args):
+        if self.log_extras is not True:
+            return
         """
         Called on any channel mode change.
         This is called before the more detailed mode hooks like e.g. OnOp() and OnMode().
@@ -113,6 +120,8 @@ class zlog_sql(znc.Module):
         self.put_log('*** ' + sNick + ' sets mode: ' + modes + ' ' + args, channel.GetName())
 
     def OnKick(self, opNick, kickedNick, channel, message):
+        if self.log_extras is not True:
+            return
         """
         Called when a nick is kicked from a channel.
         :type opNick: const CNick &
@@ -126,6 +135,8 @@ class zlog_sql(znc.Module):
                      channel.GetName())
 
     def OnQuit(self, nick, message, channels):
+        if self.log_extras is not True:
+            return
         """
         Called when a nick quit from IRC.
         :type nick: const CNick &
@@ -140,6 +151,8 @@ class zlog_sql(znc.Module):
                 channel.GetName())
 
     def OnJoin(self, nick, channel):
+        if self.log_extras is not True:
+            return
         """
         Called when a nick joins a channel.
         :type nick: const CNick &
@@ -151,6 +164,8 @@ class zlog_sql(znc.Module):
                      channel.GetName())
 
     def OnPart(self, nick, channel, message):
+        if self.log_extras is not True:
+            return
         """
         Called when a nick parts a channel.
         :type nick: const CNick &
@@ -164,6 +179,8 @@ class zlog_sql(znc.Module):
             channel.GetName())
 
     def OnNick(self, oldNick, newNick, channels):
+        if self.log_extras is not True:
+            return
         """
         Called when a nickname change occurs.
         :type oldNick: const CNick &
@@ -176,6 +193,8 @@ class zlog_sql(znc.Module):
             self.put_log('*** ' + oldNick.GetNick() + ' is now known as ' + newNick, channel.GetName())
 
     def OnTopic(self, nick, channel, topic):
+        if self.log_extras is not True:
+            return
         """
         Called when we receive a channel topic change from IRC.
         :type nick: CNick &
@@ -349,27 +368,31 @@ class zlog_sql(znc.Module):
     def parse_args(self, args):
         if args.strip() == '':
             raise Exception('Missing argument. Provide connection string as an argument.')
-
-        match = re.search('^\s*sqlite(?:://(.+))?\s*$', args)
+        
+        match = re.search('(^|\\s)--extras(\\s|$)', args)
         if match:
-            if match.group(1) is None:
+            self.log_extras = True
+
+        match = re.search('(^|\\s)sqlite(?:://(.+))?(\\s|$)', args)
+        if match:
+            if match.group(2) is None:
                 return SQLiteDatabase({'database': os.path.join(self.GetSavePath(), 'logs.sqlite')})
             else:
-                return SQLiteDatabase({'database': match.group(1)})
+                return SQLiteDatabase({'database': match.group(2)})
 
-        match = re.search('^\s*mysql://(.+?):(.+?)@(.+?)/(.+)\s*$', args)
+        match = re.search('(^|\\s)mysql://(.+?):(.+?)@(.+?)/(.+?)(\\s|$)', args)
         if match:
-            return MySQLDatabase({'host': match.group(3),
-                                  'user': match.group(1),
-                                  'passwd': match.group(2),
-                                  'db': match.group(4)})
+            return MySQLDatabase({'host': match.group(4),
+                                  'user': match.group(2),
+                                  'passwd': match.group(3),
+                                  'db': match.group(5)})
 
-        match = re.search('^\s*postgres://(.+?):(.+?)@(.+?)/(.+)\s*$', args)
+        match = re.search('(^|\\s)postgres://(.+?):(.+?)@(.+?)/(.+)(\\s|$)', args)
         if match:
-            return PostgresDatabase({'host': match.group(3),
-                                     'user': match.group(1),
-                                     'password': match.group(2),
-                                     'database': match.group(4)})
+            return PostgresDatabase({'host': match.group(4),
+                                     'user': match.group(2),
+                                     'password': match.group(3),
+                                     'database': match.group(5)})
 
         raise Exception('Unrecognized connection string. Check the documentation.')
 
